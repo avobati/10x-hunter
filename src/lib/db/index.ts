@@ -1,30 +1,36 @@
-import { neon, NeonQueryFunction } from "@neondatabase/serverless";
+import { neon } from "@neondatabase/serverless";
 
-type DbClient = NeonQueryFunction<false, false>;
+// Export a single shared sql tagged-template function
+let _sql: ReturnType<typeof neon> | null = null;
 
-let _db: DbClient | null = null;
-
-export function getDb(): DbClient {
-  if (!_db) {
-    if (!process.env.DATABASE_URL) {
-      throw new Error("DATABASE_URL environment variable is not set");
-    }
-    _db = neon(process.env.DATABASE_URL) as DbClient;
+export function getDb() {
+  if (!_sql) {
+    const url = process.env.DATABASE_URL;
+    if (!url) throw new Error("DATABASE_URL is not set");
+    _sql = neon(url);
   }
-  return _db;
+  return _sql;
 }
 
-export async function initDb(): Promise<DbClient> {
-  const db = getDb();
+// Run raw SQL string (for DDL / one-off statements)
+export async function runRaw(statement: string): Promise<void> {
+  const sql = getDb();
+  // neon tagged template: sql`...` — for raw strings we use this workaround
+  await sql(statement as unknown as TemplateStringsArray & string);
+}
+
+export async function initDb(): Promise<void> {
   const { CREATE_TABLES_SQL } = await import("./schema");
-  // Split and run each statement
-  const statements = CREATE_TABLES_SQL.split(";").map((s) => s.trim()).filter(Boolean);
+  const statements = CREATE_TABLES_SQL
+    .split(/;\s*\n/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 10);
+
   for (const stmt of statements) {
     try {
-      await db([stmt + ";"] as unknown as TemplateStringsArray);
+      await runRaw(stmt + ";");
     } catch {
-      // ignore if table already exists
+      // Table/index already exists — safe to ignore
     }
   }
-  return db;
 }

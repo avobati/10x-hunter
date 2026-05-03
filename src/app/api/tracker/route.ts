@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { getPerformanceMetrics, updatePrices, getRecommendations } from "@/lib/recommendations";
-import { initDb, getDb } from "@/lib/db";
+import { getPerformanceMetrics, updatePrices, getRecommendations, closePosition } from "@/lib/recommendations";
+import { initDb } from "@/lib/db";
 
 export async function GET() {
   try {
@@ -22,27 +22,16 @@ export async function POST(request: Request) {
     const body = await request.json();
 
     if (body.action === "update-prices") {
-      const active = await getRecommendations("active");
+      const active  = await getRecommendations("active");
       const tickers = active.map((r) => r.ticker);
-      if (tickers.length > 0) {
-        await updatePrices(tickers);
-      }
+      if (tickers.length > 0) await updatePrices(tickers);
       const metrics = await getPerformanceMetrics();
       return NextResponse.json({ success: true, metrics });
     }
 
     if (body.action === "close") {
       const { id, closedPrice } = body;
-      const db = getDb();
-      const stmt = `
-        UPDATE recommendations
-        SET status = 'closed',
-            closed_at = NOW(),
-            closed_price = ${closedPrice},
-            return_pct = (${closedPrice} - entry_price) / entry_price * 100
-        WHERE id = '${id}'
-      `;
-      await db([stmt] as unknown as TemplateStringsArray);
+      await closePosition(id, closedPrice);
       return NextResponse.json({ success: true });
     }
 

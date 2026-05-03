@@ -1,24 +1,10 @@
 import { NextResponse } from "next/server";
 import { getRecommendations, saveRecommendations, runWeeklyScan } from "@/lib/recommendations";
-import { initDb, getDb } from "@/lib/db";
-
-async function autoSeedIfEmpty() {
-  try {
-    const db = getDb();
-    const rows = (await db(["SELECT COUNT(*) as cnt FROM recommendations"] as unknown as TemplateStringsArray)) as unknown as Array<{ cnt: string }>;
-    if (parseInt(rows[0]?.cnt ?? "0") === 0) {
-      // Trigger seed
-      await fetch(`${process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000"}/api/seed`, { method: "POST" });
-    }
-  } catch {
-    // non-critical
-  }
-}
+import { initDb } from "@/lib/db";
 
 export async function GET(request: Request) {
   try {
     await initDb();
-    await autoSeedIfEmpty();
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status") as "active" | "closed" | "stopped" | null;
     const recs = await getRecommendations(status ?? undefined);
