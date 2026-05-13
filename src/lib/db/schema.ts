@@ -88,8 +88,39 @@ CREATE TABLE IF NOT EXISTS price_history (
   recorded_at TIMESTAMP DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS scan_jobs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  status VARCHAR(30) NOT NULL DEFAULT 'running',
+  total_tickers INTEGER DEFAULT 0,
+  processed INTEGER DEFAULT 0,
+  passed_stage1 INTEGER DEFAULT 0,
+  passed_stage2 INTEGER DEFAULT 0,
+  week_of DATE NOT NULL,
+  top_picks TEXT[] DEFAULT '{}',
+  error TEXT,
+  started_at TIMESTAMP DEFAULT NOW(),
+  completed_at TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS screener_results (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  scan_job_id UUID REFERENCES scan_jobs(id) ON DELETE CASCADE,
+  ticker VARCHAR(10) NOT NULL,
+  name VARCHAR(255),
+  price DECIMAL(12,4),
+  volume BIGINT,
+  market_cap BIGINT,
+  stage INTEGER DEFAULT 1,
+  passed BOOLEAN DEFAULT false,
+  created_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(scan_job_id, ticker, stage)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_ticker_week_of ON recommendations(ticker, week_of);
 CREATE INDEX IF NOT EXISTS idx_recommendations_ticker ON recommendations(ticker);
 CREATE INDEX IF NOT EXISTS idx_recommendations_week_of ON recommendations(week_of);
 CREATE INDEX IF NOT EXISTS idx_recommendations_status ON recommendations(status);
 CREATE INDEX IF NOT EXISTS idx_price_history_recommendation_id ON price_history(recommendation_id);
+CREATE INDEX IF NOT EXISTS idx_scan_jobs_status ON scan_jobs(status);
+CREATE INDEX IF NOT EXISTS idx_screener_results_job ON screener_results(scan_job_id);
 `;

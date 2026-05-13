@@ -26,6 +26,29 @@ export interface StockData {
   insiderBuying?: boolean;
   institutionalOwnership?: number | null;
   sector?: string;
+  industry?: string;
+  sharesOutstanding?: number | null;
+  floatShares?: number | null;
+  heldByInsiders?: number | null;
+  heldByInstitutions?: number | null;
+  operatingCashflow?: number | null;
+  freeCashflow?: number | null;
+  totalDebt?: number | null;
+  profitMargins?: number | null;
+  roe?: number | null;
+  earningsQuarterlyGrowth?: number | null;
+  revenueQuarterlyGrowth?: number | null;
+  recommendationMean?: number | null;
+  targetMeanPrice?: number | null;
+  recentBuySignal?: boolean;
+  barsSinceBuy?: number | null;
+  signalPrice?: number | null;
+  utbotScore?: number | null;
+  relativeStrength3m?: number | null;
+  relativeStrength6m?: number | null;
+  distanceFromHigh?: number | null;
+  industryLeadership?: number | null;
+  marketRegime?: "bull" | "neutral" | "bear";
 }
 
 /**
@@ -42,7 +65,12 @@ export function scoreStock(data: StockData): ScoreBreakdown {
   const catalyst = scoreCatalyst(data);
   const riskReward = scoreRiskReward(data);
 
-  const total = momentum + fundamental + technical + catalyst + riskReward;
+  const baseEligible = isBaseEligible(data);
+  const regimeMultiplier = data.marketRegime === "bull" ? 1.04 : data.marketRegime === "bear" ? 0.88 : 0.97;
+  const tenXAdjustment = scoreTenXAdjustment(data);
+  const rawTotal = momentum + fundamental + technical + catalyst + riskReward;
+  const gatedTotal = baseEligible ? rawTotal * regimeMultiplier + tenXAdjustment : Math.min(rawTotal, 49);
+  const total = Math.min(100, Math.max(0, gatedTotal));
 
   return {
     momentum,
@@ -50,8 +78,20 @@ export function scoreStock(data: StockData): ScoreBreakdown {
     technical,
     catalyst,
     riskReward,
-    total: Math.min(100, Math.max(0, total)),
+    total,
+    regime: data.marketRegime ?? "neutral",
+    baseEligible,
+    barsSinceBuy: data.barsSinceBuy ?? null,
+    relativeStrength: Math.round(computeRelativeStrength(data)),
+    acceleration: Math.round(computeAcceleration(data)),
+    industryLeadership: Math.round(data.industryLeadership ?? sectorLeadershipScore(data.sector)),
+    smartMoney: Math.round(computeSmartMoney(data)),
   };
+}
+
+export function isBaseEligible(data: StockData): boolean {
+  const recentBuy = data.recentBuySignal !== false && (data.barsSinceBuy == null || data.barsSinceBuy <= 4);
+  return recentBuy && data.price > 0 && data.sma200 > 0 && data.price > data.sma200;
 }
 
 // ── Momentum Score (0-25) ─────────────────────────────────────────────────────
@@ -59,39 +99,37 @@ export function scoreStock(data: StockData): ScoreBreakdown {
 function scoreMomentum(data: StockData): number {
   let score = 0;
 
-  // Price momentum (0-15)
   const { priceChange1d, priceChange1w, priceChange1m, priceChange3m } = data;
+  const volumeRatio = data.avgVolume > 0 ? data.volume / data.avgVolume : 1;
+  const oneilPower = Math.max(0, priceChange1d) * Math.min(5, volumeRatio);
 
-  // Weekly momentum (most important short-term signal)
-  if (priceChange1w >= 20) score += 5;
-  else if (priceChange1w >= 10) score += 4;
-  else if (priceChange1w >= 5) score += 3;
-  else if (priceChange1w >= 2) score += 2;
+  if (oneilPower >= 25) score += 7;
+  else if (oneilPower >= 12) score += 5;
+  else if (oneilPower >= 6) score += 3;
+
+  if (priceChange1w >= 15) score += 4;
+  else if (priceChange1w >= 8) score += 3;
+  else if (priceChange1w >= 3) score += 2;
   else if (priceChange1w >= 0) score += 1;
 
-  // Monthly momentum
-  if (priceChange1m >= 50) score += 5;
-  else if (priceChange1m >= 30) score += 4;
-  else if (priceChange1m >= 20) score += 3;
-  else if (priceChange1m >= 10) score += 2;
+  if (priceChange1m >= 40) score += 4;
+  else if (priceChange1m >= 25) score += 3;
+  else if (priceChange1m >= 12) score += 2;
   else if (priceChange1m >= 0) score += 1;
 
-  // 3-month momentum (stage 2 uptrend indicator)
-  if (priceChange3m !== undefined) {
-    if (priceChange3m >= 100) score += 5;
-    else if (priceChange3m >= 50) score += 4;
-    else if (priceChange3m >= 30) score += 3;
-    else if (priceChange3m >= 20) score += 2;
-    else if (priceChange3m >= 0) score += 1;
-  }
+  if ((priceChange3m ?? 0) >= 80) score += 4;
+  else if ((priceChange3m ?? 0) >= 45) score += 3;
+  else if ((priceChange3m ?? 0) >= 20) score += 2;
 
-  // Volume surge (0-10): institutional accumulation signal
-  const volumeRatio = data.avgVolume > 0 ? data.volume / data.avgVolume : 1;
-  if (volumeRatio >= 5) score += 10;
-  else if (volumeRatio >= 3) score += 8;
-  else if (volumeRatio >= 2) score += 6;
-  else if (volumeRatio >= 1.5) score += 4;
-  else if (volumeRatio >= 1.2) score += 2;
+  if (volumeRatio >= 4) score += 4;
+  else if (volumeRatio >= 2.5) score += 3;
+  else if (volumeRatio >= 1.5) score += 2;
+  else if (volumeRatio >= 1.1) score += 1;
+
+  score += Math.round(computeRelativeStrength(data) / 100 * 3);
+  if (data.barsSinceBuy === 0) score += 3;
+  else if (data.barsSinceBuy !== null && data.barsSinceBuy !== undefined && data.barsSinceBuy <= 2) score += 2;
+  else if (data.barsSinceBuy !== null && data.barsSinceBuy !== undefined && data.barsSinceBuy <= 4) score += 1;
 
   return Math.min(25, score);
 }
@@ -102,7 +140,7 @@ function scoreFundamental(data: StockData): number {
   let score = 0;
 
   // Revenue growth (0-12) — the lifeblood of a 10x
-  const revGrowth = data.revenueGrowth;
+  const revGrowth = data.revenueGrowth ?? data.revenueQuarterlyGrowth ?? null;
   if (revGrowth !== null && revGrowth !== undefined) {
     if (revGrowth >= 100) score += 12;
     else if (revGrowth >= 75) score += 10;
@@ -142,9 +180,11 @@ function scoreFundamental(data: StockData): number {
 
   // Small/micro cap premium (bonus for undiscovered gems)
   const mcap = data.marketCap;
-  if (mcap < 300_000_000) score += 3;       // micro cap: most undiscovered
-  else if (mcap < 2_000_000_000) score += 2; // small cap: still room to run
-  else if (mcap < 10_000_000_000) score += 1; // mid cap: institutional entry
+  if (mcap > 100_000_000 && mcap < 2_000_000_000) score += 3;
+  else if (mcap < 10_000_000_000) score += 2;
+  else if (mcap < 50_000_000_000) score += 1;
+
+  if (computeAcceleration(data) >= 70) score += 2;
 
   return Math.min(25, score);
 }
@@ -182,6 +222,9 @@ function scoreTechnical(data: StockData): number {
     if (price > sma200) score += 3;
   }
 
+  if (data.recentBuySignal && (data.barsSinceBuy ?? 99) <= 4) score += 3;
+  if (isBaseEligible(data)) score += 2;
+
   return Math.min(20, score);
 }
 
@@ -217,6 +260,9 @@ function scoreCatalyst(data: StockData): number {
   else if (data.beta > 1.2) score += 2;
   else if (data.beta > 1.0) score += 1;
 
+  score += Math.round(computeSmartMoney(data) / 100 * 4);
+  score += Math.round((data.industryLeadership ?? sectorLeadershipScore(data.sector)) / 100 * 3);
+
   return Math.min(20, score);
 }
 
@@ -224,18 +270,74 @@ function scoreCatalyst(data: StockData): number {
 function scoreRiskReward(data: StockData): number {
   let score = 5; // baseline
 
-  // Penalize extreme volatility without momentum
-  if (data.beta > 3 && data.priceChange1m < 0) score -= 2;
+  if (data.beta > 3 && data.priceChange1m < 0) score -= 3;
+  if (data.beta > 2.8) score -= 1;
 
-  // Penalize overbought without fundamentals
   if (data.rsi > 85 && (data.revenueGrowth ?? 0) < 20) score -= 2;
+  if ((data.distanceFromHigh ?? 20) < 3 && data.rsi > 78) score -= 1;
 
-  // Reward balanced risk profile
   if (data.beta >= 1.2 && data.beta <= 2.5) score += 2;
   if (data.rsi >= 55 && data.rsi <= 75) score += 2;
   if ((data.priceChange1m ?? 0) > 20 && data.rsi < 80) score += 3;
+  if (data.price > data.sma200 && data.sma50 > data.sma200) score += 1;
+  if ((data.freeCashflow ?? 0) > 0 || (data.operatingCashflow ?? 0) > 0) score += 1;
 
   return Math.min(10, Math.max(0, score));
+}
+
+function computeRelativeStrength(data: StockData): number {
+  const provided = data.relativeStrength3m ?? data.relativeStrength6m;
+  if (provided != null) return clamp(provided);
+  return clamp(50 + (data.priceChange3m ?? 0) * 0.45 + data.priceChange1m * 0.3);
+}
+
+function computeAcceleration(data: StockData): number {
+  const revenue = data.revenueGrowth ?? data.revenueQuarterlyGrowth ?? 0;
+  const earnings = data.earningsGrowth ?? data.earningsQuarterlyGrowth ?? 0;
+  const margin = data.grossMargin ?? 0;
+  const cash = (data.freeCashflow ?? data.operatingCashflow ?? 0) > 0 ? 8 : 0;
+  return clamp(45 + revenue * 0.35 + earnings * 0.2 + Math.max(0, margin - 25) * 0.25 + cash);
+}
+
+function computeSmartMoney(data: StockData): number {
+  const inst = data.institutionalOwnership ?? data.heldByInstitutions ?? 35;
+  const insider = data.heldByInsiders ?? 0;
+  const short = data.shortFloat ?? 0;
+  const volumeRatio = data.avgVolume > 0 ? data.volume / data.avgVolume : 1;
+  return clamp(35 + sweetSpot(inst, 18, 65) * 0.28 + insider * 0.18 + Math.min(30, short) * 0.45 + Math.min(30, volumeRatio * 8));
+}
+
+function scoreTenXAdjustment(data: StockData): number {
+  const leadership = data.industryLeadership ?? sectorLeadershipScore(data.sector);
+  const acceleration = computeAcceleration(data);
+  const smartMoney = computeSmartMoney(data);
+  let adjustment = 0;
+  if (computeRelativeStrength(data) >= 70 && leadership >= 65) adjustment += 3;
+  if (acceleration >= 75 && smartMoney >= 60) adjustment += 3;
+  if (data.price > data.sma200 && data.sma50 > data.sma200 && data.recentBuySignal) adjustment += 2;
+  if ((data.totalDebt ?? 0) > 0 && (data.operatingCashflow ?? 0) < 0) adjustment -= 2;
+  if ((data.marketCap ?? 0) < 100_000_000) adjustment -= 3;
+  return adjustment;
+}
+
+function sectorLeadershipScore(sector?: string): number {
+  const s = (sector ?? "").toLowerCase();
+  if (s.includes("technology") || s.includes("semiconductor")) return 78;
+  if (s.includes("communication")) return 70;
+  if (s.includes("healthcare")) return 66;
+  if (s.includes("industrial")) return 64;
+  if (s.includes("financial")) return 58;
+  if (s.includes("energy") || s.includes("material")) return 55;
+  return 50;
+}
+
+function sweetSpot(value: number, low: number, high: number): number {
+  if (value >= low && value <= high) return 100;
+  return value < low ? clamp((value / low) * 100) : clamp(100 - (value - high) * 1.4);
+}
+
+function clamp(value: number, min = 0, max = 100): number {
+  return Math.min(max, Math.max(min, value));
 }
 
 // ── Target Price Calculator ───────────────────────────────────────────────────

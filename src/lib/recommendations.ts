@@ -144,7 +144,22 @@ export async function saveRecommendations(
           ${rec.returnPct ?? 0},
           ${rec.aiAnalysis ?? null}
         )
-        ON CONFLICT DO NOTHING
+        ON CONFLICT (ticker, week_of) DO UPDATE SET
+          name            = EXCLUDED.name,
+          sector          = EXCLUDED.sector,
+          entry_price     = EXCLUDED.entry_price,
+          target_price    = EXCLUDED.target_price,
+          stop_loss       = EXCLUDED.stop_loss,
+          score           = EXCLUDED.score,
+          score_breakdown = EXCLUDED.score_breakdown,
+          thesis          = EXCLUDED.thesis,
+          catalysts       = EXCLUDED.catalysts,
+          risks           = EXCLUDED.risks,
+          timeframe       = EXCLUDED.timeframe,
+          status          = EXCLUDED.status,
+          current_price   = EXCLUDED.current_price,
+          return_pct      = EXCLUDED.return_pct,
+          ai_analysis     = COALESCE(EXCLUDED.ai_analysis, recommendations.ai_analysis)
       `;
     } catch (e) {
       console.error(`saveRecommendations error for ${rec.ticker}:`, e);

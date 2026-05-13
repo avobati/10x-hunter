@@ -23,7 +23,16 @@ export default function TrackerPage() {
   const [updating, setUpdating] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    loadData().then(() => {
+      // Auto-refresh prices silently on mount
+      fetch("/api/tracker", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "update-prices" }),
+      }).then(() => loadData()).catch(() => {});
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadData() {
     setLoading(true);

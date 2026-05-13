@@ -60,6 +60,13 @@ export interface ScoreBreakdown {
   catalyst: number;        // 0-20: upcoming events, insider buying
   riskReward: number;      // 0-10: setup quality
   total: number;           // 0-100
+  regime?: string;
+  baseEligible?: boolean;
+  barsSinceBuy?: number | null;
+  relativeStrength?: number;
+  acceleration?: number;
+  industryLeadership?: number;
+  smartMoney?: number;
 }
 
 export interface PerformanceMetrics {

@@ -38,6 +38,14 @@ export default function RecommendationCard({ rec, onClose }: RecommendationCardP
   const isPositive = returnPct >= 0;
   const upside = ((rec.targetPrice - rec.entryPrice) / rec.entryPrice) * 100;
   const currentPrice = rec.currentPrice ?? rec.entryPrice;
+  const extraFactors = [
+    { label: "Regime", value: rec.scoreBreakdown.regime ?? "neutral" },
+    { label: "BUY Bars", value: rec.scoreBreakdown.barsSinceBuy ?? "n/a" },
+    { label: "RS", value: rec.scoreBreakdown.relativeStrength ?? 0 },
+    { label: "Accel", value: rec.scoreBreakdown.acceleration ?? 0 },
+    { label: "Industry", value: rec.scoreBreakdown.industryLeadership ?? 0 },
+    { label: "Flow", value: rec.scoreBreakdown.smartMoney ?? 0 },
+  ];
 
   const aiData = rec.aiAnalysis ? (() => {
     try { return JSON.parse(rec.aiAnalysis!); } catch { return null; }
@@ -123,6 +131,15 @@ export default function RecommendationCard({ rec, onClose }: RecommendationCardP
             <Clock className="w-3 h-3 text-gray-500" />
             <span className="text-gray-500 text-xs">{rec.timeframe}</span>
           </div>
+        </div>
+
+        <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+          {extraFactors.map((factor) => (
+            <div key={factor.label} className="bg-white/[0.04] border border-white/10 rounded-lg px-2 py-2 text-center">
+              <p className="text-gray-500 text-[10px] uppercase tracking-wide">{factor.label}</p>
+              <p className="text-gray-200 text-xs font-semibold mt-0.5">{factor.value}</p>
+            </div>
+          ))}
         </div>
 
         {/* Thesis */}
