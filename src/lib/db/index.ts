@@ -16,7 +16,7 @@ export function getDb() {
 export async function runRaw(statement: string): Promise<void> {
   const sql = getDb();
   // neon tagged template: sql`...` — for raw strings we use this workaround
-  await sql(statement as unknown as TemplateStringsArray & string);
+  await sql.query(statement);
 }
 
 export async function initDb(): Promise<void> {
