@@ -2,8 +2,7 @@ import yahooFinance from "yahoo-finance2";
 import { StockData } from "./scoring-engine";
 export { SCAN_UNIVERSE } from "./universe";
 
-// Suppress noisy console output from yahoo-finance2
-try { (yahooFinance as unknown as { suppressNotices: (n: string[]) => void }).suppressNotices(["yahooSurvey"]); } catch { /* ok */ }
+const yahoo = new yahooFinance({ suppressNotices: ["yahooSurvey"] });
 
 export interface RawQuote {
   ticker: string;
@@ -115,7 +114,7 @@ type YFSummary = {
 export async function fetchQuote(ticker: string): Promise<RawQuote | null> {
   // 1. Try yahoo-finance2
   try {
-    const quote = (await yahooFinance.quote(ticker)) as unknown as YFQuote;
+    const quote = (await yahoo.quote(ticker)) as unknown as YFQuote;
     if (quote && quote.regularMarketPrice && quote.regularMarketPrice > 0) {
       return {
         ticker,
@@ -156,7 +155,7 @@ export async function fetchQuote(ticker: string): Promise<RawQuote | null> {
 
 async function fetchYahooEnrichment(ticker: string): Promise<Partial<StockData>> {
   try {
-    const summary = (await yahooFinance.quoteSummary(ticker, {
+    const summary = (await yahoo.quoteSummary(ticker, {
       modules: [
         "summaryProfile",
         "assetProfile",
@@ -208,7 +207,7 @@ export async function fetchQuotes(tickers: string[]): Promise<RawQuote[]> {
 
   // Try batch via yahoo-finance2
   try {
-    const quotes = (await yahooFinance.quote(tickers)) as unknown as YFQuote | YFQuote[];
+    const quotes = (await yahoo.quote(tickers)) as unknown as YFQuote | YFQuote[];
     const arr = Array.isArray(quotes) ? quotes : [quotes];
     for (const q of arr) {
       if (q?.regularMarketPrice && q.regularMarketPrice > 0) {
@@ -245,7 +244,7 @@ export async function fetchHistoricalData(ticker: string): Promise<number[]> {
     const startDate = new Date();
     startDate.setFullYear(startDate.getFullYear() - 1);
 
-    const result = (await yahooFinance.historical(ticker, {
+    const result = (await yahoo.historical(ticker, {
       period1: startDate,
       period2: endDate,
       interval: "1d",

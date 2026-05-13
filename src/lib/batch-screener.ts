@@ -14,9 +14,7 @@ import { scoreStock, calculateTargets, generateThesis, isBaseEligible } from "./
 import { buildStockData } from "./stock-data";
 import { ScoreBreakdown } from "@/types";
 
-try {
-  (yahooFinance as unknown as { suppressNotices: (n: string[]) => void }).suppressNotices(["yahooSurvey"]);
-} catch { /* ok */ }
+const yahoo = new yahooFinance({ suppressNotices: ["yahooSurvey"] });
 
 export interface Stage1Result {
   ticker: string;
@@ -71,7 +69,7 @@ export async function batchQuoteStage1(tickers: string[]): Promise<Stage1Result[
   try {
     // yahoo-finance2 accepts a string[] and makes ONE batch request
     const raw = await Promise.race([
-      (yahooFinance.quote as unknown as (s: string[]) => Promise<YFQ | YFQ[]>)(tickers),
+      (yahoo.quote as unknown as (s: string[]) => Promise<YFQ | YFQ[]>)(tickers),
       timeoutPromise,
     ]);
 
