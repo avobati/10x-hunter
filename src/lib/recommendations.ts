@@ -159,6 +159,8 @@ export async function saveRecommendations(
           status          = EXCLUDED.status,
           current_price   = EXCLUDED.current_price,
           return_pct      = ROUND(((EXCLUDED.current_price - recommendations.entry_price) / NULLIF(recommendations.entry_price, 0) * 100)::numeric, 4),
+          closed_at       = CASE WHEN EXCLUDED.status = 'active' THEN NULL ELSE recommendations.closed_at END,
+          closed_price    = CASE WHEN EXCLUDED.status = 'active' THEN NULL ELSE recommendations.closed_price END,
           ai_analysis     = COALESCE(EXCLUDED.ai_analysis, recommendations.ai_analysis)
       `;
     } catch (e) {

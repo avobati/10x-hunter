@@ -184,8 +184,11 @@ export async function POST() {
             catalysts       = ${rec.catalysts},
             risks           = ${rec.risks},
             timeframe       = ${rec.timeframe},
+            status          = 'active',
             current_price   = ${rec.currentPrice ?? rec.entryPrice},
             return_pct      = ROUND(((${rec.currentPrice ?? rec.entryPrice} - entry_price) / NULLIF(entry_price, 0) * 100)::numeric, 4),
+            closed_at       = NULL,
+            closed_price    = NULL,
             ai_analysis     = COALESCE(${rec.aiAnalysis ?? null}, ai_analysis)
           WHERE id = ${existing.id}
         `;
