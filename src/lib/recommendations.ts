@@ -147,7 +147,7 @@ export async function saveRecommendations(
         ON CONFLICT (ticker, week_of) DO UPDATE SET
           name            = EXCLUDED.name,
           sector          = EXCLUDED.sector,
-          entry_price     = EXCLUDED.entry_price,
+          entry_price     = recommendations.entry_price,
           target_price    = EXCLUDED.target_price,
           stop_loss       = EXCLUDED.stop_loss,
           score           = EXCLUDED.score,
@@ -158,7 +158,7 @@ export async function saveRecommendations(
           timeframe       = EXCLUDED.timeframe,
           status          = EXCLUDED.status,
           current_price   = EXCLUDED.current_price,
-          return_pct      = EXCLUDED.return_pct,
+          return_pct      = ROUND(((EXCLUDED.current_price - recommendations.entry_price) / NULLIF(recommendations.entry_price, 0) * 100)::numeric, 4),
           ai_analysis     = COALESCE(EXCLUDED.ai_analysis, recommendations.ai_analysis)
       `;
     } catch (e) {

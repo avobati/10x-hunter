@@ -30,17 +30,12 @@ export async function POST() {
 
     // Step 1: Archive ALL currently active picks before generating fresh ones.
     // This guarantees exactly TOP_SAVE clean new picks after the scan — no stale leftovers.
-    await sql`
-      UPDATE recommendations
-      SET
-        status       = 'closed',
-        closed_at    = NOW(),
-        closed_price = COALESCE(current_price, entry_price),
-        return_pct   = ROUND(
-          ((COALESCE(current_price, entry_price) - entry_price) / NULLIF(entry_price, 0) * 100)::numeric, 4
-        )
+    const activeBefore = await sql`
+      SELECT id, ticker, entry_price
+      FROM recommendations
       WHERE status = 'active'
-    `;
+    ` as unknown as Array<{ id: string; ticker: string; entry_price: string }>;
+    const activeByTicker = new Map(activeBefore.map((row) => [row.ticker, row]));
 
     // Step 2: Use Finviz UTBot BUY recency as the base gate, then enrich with Yahoo.
     const utbot = await fetchUtbotBuyRecommendations(220);
@@ -96,6 +91,9 @@ export async function POST() {
       const breakdown  = scoreStock(candidate.data);
       const { targetPrice, stopLoss } = calculateTargets(candidate.data, breakdown.total);
       const thesis     = generateThesis(candidate.data, breakdown);
+      const existing = activeByTicker.get(candidate.ticker);
+      const entryPrice = existing ? parseFloat(String(existing.entry_price)) : candidate.data.price;
+      const returnPct = entryPrice > 0 ? ((candidate.data.price - entryPrice) / entryPrice) * 100 : 0;
 
       let aiAnalysis: string | undefined;
       let catalysts = [
@@ -120,7 +118,7 @@ export async function POST() {
         ticker:         candidate.ticker,
         name:           candidate.name,
         sector:         candidate.sector,
-        entryPrice:     candidate.data.price,
+        entryPrice,
         targetPrice,
         stopLoss,
         score:          breakdown.total,
@@ -132,13 +130,69 @@ export async function POST() {
         weekOf,
         status:         "active" as const,
         currentPrice:   candidate.data.price,
-        returnPct:      0,
+        returnPct,
         aiAnalysis,
       });
     }
 
-    if (recommendations.length > 0) {
-      await saveRecommendations(recommendations);
+    const returnedTickers = recommendations.map((r) => r.ticker);
+    const returnedTickerSet = new Set(returnedTickers);
+    const inserted: string[] = [];
+    const retained: string[] = [];
+
+    if (returnedTickers.length > 0) {
+      await sql`
+        UPDATE recommendations
+        SET
+          status       = 'closed',
+          closed_at    = NOW(),
+          closed_price = COALESCE(current_price, entry_price),
+          return_pct   = ROUND(
+            ((COALESCE(current_price, entry_price) - entry_price) / NULLIF(entry_price, 0) * 100)::numeric, 4
+          )
+        WHERE status = 'active'
+          AND NOT (ticker = ANY(${returnedTickers}))
+      `;
+    } else {
+      await sql`
+        UPDATE recommendations
+        SET
+          status       = 'closed',
+          closed_at    = NOW(),
+          closed_price = COALESCE(current_price, entry_price),
+          return_pct   = ROUND(
+            ((COALESCE(current_price, entry_price) - entry_price) / NULLIF(entry_price, 0) * 100)::numeric, 4
+          )
+        WHERE status = 'active'
+      `;
+    }
+
+    for (const rec of recommendations) {
+      const existing = activeByTicker.get(rec.ticker);
+      if (existing) {
+        retained.push(rec.ticker);
+        await sql`
+          UPDATE recommendations
+          SET
+            name            = ${rec.name},
+            sector          = ${rec.sector},
+            target_price    = ${rec.targetPrice},
+            stop_loss       = ${rec.stopLoss},
+            score           = ${rec.score},
+            score_breakdown = ${JSON.stringify(rec.scoreBreakdown)},
+            thesis          = ${rec.thesis},
+            catalysts       = ${rec.catalysts},
+            risks           = ${rec.risks},
+            timeframe       = ${rec.timeframe},
+            current_price   = ${rec.currentPrice ?? rec.entryPrice},
+            return_pct      = ROUND(((${rec.currentPrice ?? rec.entryPrice} - entry_price) / NULLIF(entry_price, 0) * 100)::numeric, 4),
+            ai_analysis     = COALESCE(${rec.aiAnalysis ?? null}, ai_analysis)
+          WHERE id = ${existing.id}
+        `;
+      } else {
+        inserted.push(rec.ticker);
+        await saveRecommendations([rec]);
+      }
     }
 
     // Step 4: Refresh current_price for all active picks right now
@@ -166,6 +220,9 @@ export async function POST() {
       scanned:  scanUniverse.length,
       passedBase: allScored.length,
       saved:    recommendations.length,
+      inserted,
+      retained,
+      closed: activeBefore.map((r) => r.ticker).filter((ticker) => !returnedTickerSet.has(ticker)),
       topPicks: recommendations.map((r) => r.ticker),
       weekOf,
     });
